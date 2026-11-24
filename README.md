@@ -20,7 +20,7 @@
 
 ## 源码与构建
 
-目录：`app/` 为界面和调度代码；`core/` 为认证核心的 Windows 移植源码；`tools/` 为构建和修复工具；`tests/` 为离线测试。
+目录：`app/` 为界面和调度代码；`core/` 为认证核心的 Windows 移植源码；`tools/` 为构建工具；`tests/` 为离线测试。
 
 GUI 构建需要 Windows x64、Python 3.12（含 tkinter）：
 
