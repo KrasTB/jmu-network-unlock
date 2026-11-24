@@ -53,3 +53,7 @@ py -3.12 -m venv .venv
 自有界面及脚本使用 MIT。认证核心含 jmuSupplicant 的 Apache-2.0 代码及 GPL-3.0-or-later 等第三方实现，组合核心按 GPLv3 分发；libiconv 保留自身许可。完整范围和来源见 [NOTICE.md](NOTICE.md) 与 [licenses/](licenses/)。
 
 发行版同时提供源码包，包含核心源码和 libiconv 1.19 对应源码、补丁及构建配方。Npcap 不包含在源码包或运行包中。
+
+## 项目说明
+
+本项目由 Codex（OpenAI）与 DeepSeek 协作完成。
