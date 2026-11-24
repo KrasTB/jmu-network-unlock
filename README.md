@@ -57,3 +57,15 @@ py -3.12 -m venv .venv
 ## 项目说明
 
 本项目由 Codex（OpenAI）与 DeepSeek 协作完成。
+
+## 喝杯奶茶
+
+这个项目源于个人的兴趣与需求，免费开源。如果觉得好用，欢迎点个 Star 支持。
+
+维护和改进也需要花费时间，欢迎请我喝杯奶茶，为后续更新加点动力 🧋
+
+| 支付宝 | 微信支付 |
+| :---: | :---: |
+| <img src="docs/assets/alipay.png" alt="支付宝收款码" width="240"> | <img src="docs/assets/wechat.png" alt="微信收款码" width="240"> |
+
+赞助完全自愿，感谢每一份支持！
