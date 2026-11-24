@@ -38,6 +38,22 @@ def run(report):
                 assert not second
         results.append('cross_process_mutex')
 
+        import minimal_mode
+        originals = (minimal_mode.enabled, minimal_mode.shift_requested, launcher.run_minimal, launcher.main, sys.argv)
+        calls = []
+        try:
+            minimal_mode.enabled = lambda: True
+            minimal_mode.shift_requested = lambda: False
+            launcher.run_minimal = lambda: calls.append('minimal')
+            launcher.main = lambda: calls.append('full')
+            for arguments in [[], ['--full'], ['--auto-switch'], ['--startup-guard']]:
+                sys.argv = [originals[4][0]] + arguments
+                launcher.dispatch()
+            assert calls == ['minimal', 'full']
+        finally:
+            minimal_mode.enabled, minimal_mode.shift_requested, launcher.run_minimal, launcher.main, sys.argv = originals
+        results.append('minimal_entry_full_override_and_background_block')
+
         with tempfile.TemporaryDirectory(prefix='jmu-settings-test-') as directory:
             testdir = Path(directory)
             launcher.CFG = testdir / 'config.txt'

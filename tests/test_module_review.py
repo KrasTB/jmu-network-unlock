@@ -23,8 +23,6 @@ class ModuleReviewTests(unittest.TestCase):
         tools = Path(__file__).parent
         cls.stage = ROOT / 'app'
         sys.path.insert(0, str(cls.stage))
-        for name in ['control', 'auto_switch', 'startup_guard', 'schedule']:
-            sys.modules.pop(name, None)
         cls.control = importlib.import_module('control')
         cls.auto = importlib.import_module('auto_switch')
         cls.schedule = importlib.import_module('schedule')

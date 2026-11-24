@@ -145,18 +145,85 @@ def task_enabled():
 
 def set_task(enabled):
     if enabled:
-        command = subprocess.list2cmdline(app_command('auto-switch'))
-        args = ['schtasks', '/Create', '/TN', TASK, '/TR', command, '/SC', 'MINUTE',
-                '/MO', '2', '/ST', '00:00', '/F']
+        import datetime
+        import tempfile
+        import xml.etree.ElementTree as ET
+        ns = 'http://schemas.microsoft.com/windows/2004/02/mit/task'
+        ET.register_namespace('', ns)
+        root = ET.Element('{' + ns + '}Task', version='1.2')
+        def child(parent, name, text=None, **attrs):
+            node = ET.SubElement(parent, '{' + ns + '}' + name, attrs)
+            node.text = text
+            return node
+        trigger = child(child(root, 'Triggers'), 'CalendarTrigger')
+        repetition = child(trigger, 'Repetition')
+        child(repetition, 'Interval', 'PT2M')
+        child(repetition, 'Duration', 'P1D')
+        child(repetition, 'StopAtDurationEnd', 'false')
+        child(trigger, 'StartBoundary', datetime.date.today().isoformat() + 'T00:00:00')
+        child(trigger, 'Enabled', 'true')
+        child(child(trigger, 'ScheduleByDay'), 'DaysInterval', '1')
+        principal = child(child(root, 'Principals'), 'Principal', id='Author')
+        child(principal, 'UserId', os.environ.get('USERDOMAIN', '.') + '\\' + os.environ['USERNAME'])
+        child(principal, 'LogonType', 'InteractiveToken')
+        child(principal, 'RunLevel', 'LeastPrivilege')
+        settings = child(root, 'Settings')
+        for name, value in [('MultipleInstancesPolicy','IgnoreNew'), ('DisallowStartIfOnBatteries','false'),
+                            ('StopIfGoingOnBatteries','false'), ('StartWhenAvailable','true'),
+                            ('AllowStartOnDemand','true'), ('Enabled','true'), ('ExecutionTimeLimit','PT5M')]:
+            child(settings, name, value)
+        action = child(child(root, 'Actions', Context='Author'), 'Exec')
+        command = app_command('auto-switch')
+        child(action, 'Command', command[0])
+        child(action, 'Arguments', subprocess.list2cmdline(command[1:]))
+        with tempfile.TemporaryDirectory(prefix='jmu-task-') as directory:
+            path = Path(directory) / 'task.xml'
+            ET.ElementTree(root).write(path, encoding='utf-16', xml_declaration=True)
+            result = subprocess.run(['schtasks', '/Create', '/TN', TASK, '/XML', str(path), '/F'],
+                                    capture_output=True, creationflags=NO_WINDOW, timeout=20)
     else:
         args = ['schtasks', '/Delete', '/TN', TASK, '/F']
-    result = subprocess.run(args, capture_output=True, creationflags=NO_WINDOW, timeout=20)
+        result = subprocess.run(args, capture_output=True, creationflags=NO_WINDOW, timeout=20)
     if result.returncode:
         raise RuntimeError('系统未能更新自动切换任务，请检查任务计划程序权限。')
 
 
 def ensure_nic():
     return resolve_nic(force=True)
+
+
+def run_minimal():
+    from minimal_mode import authenticate_once
+    from runtime_support import read_config
+    from switch_notifications import notify_result
+    root = None
+    def settings_root():
+        nonlocal root
+        if root is None:
+            root = tk.Tk()
+            root.withdraw()
+        return root
+    try:
+        if not ensure_npcap():
+            notify_result('JMU 夜间联网', '缺少 Npcap，认证未启动。', warning=True)
+            return
+        if not CFG.exists() or not read_fields()[0]:
+            if not configure(settings_root()):
+                return
+        conf = read_config(CFG)
+        try:
+            adapter = ensure_nic()
+        except NicError:
+            if not choose_dialog(settings_root()):
+                return
+            adapter = ensure_nic()
+        authenticate_once(conf, adapter['device'])
+    except Exception as exc:
+        event('minimal', '启动检查未通过', level='ERROR', reason=str(exc))
+        notify_result('JMU 夜间联网', '认证未启动：' + str(exc), warning=True)
+    finally:
+        if root is not None:
+            root.destroy()
 
 
 def main():
@@ -228,8 +295,30 @@ def main():
 
     settings.add_checkbutton(label='登录 Windows 后自动认证', variable=boot,
                              command=lambda: change(boot, set_autostart))
-    settings.add_checkbutton(label='夜间自动切换', variable=periodic,
+    settings.add_checkbutton(label='自动切换（夜间／早间恢复）', variable=periodic,
                              command=lambda: change(periodic, set_task))
+    from minimal_mode import enabled as minimal_enabled, set_enabled as save_minimal
+    simple = tk.BooleanVar(value=minimal_enabled())
+    def change_minimal():
+        try:
+            if simple.get():
+                set_autostart(False)
+                if task_enabled():
+                    set_task(False)
+                boot.set(False)
+                periodic.set(False)
+            save_minimal(simple.get())
+            event('settings', '最简模式设置已更新', enabled=simple.get())
+            if simple.get():
+                app.alive = False
+                root.destroy()
+            else:
+                app.tip.config(text='已恢复完整模式。自动功能可在设置中按需启用。')
+        except Exception as exc:
+            simple.set(not simple.get())
+            app.tip.config(text='最简模式未能更新：' + str(exc))
+    settings.add_separator()
+    settings.add_checkbutton(label='最简模式（下次打开直接认证）', variable=simple, command=change_minimal)
     settings.add_separator()
     settings.add_command(label='编辑节假日', command=lambda: os.startfile(str(BASE / 'holidays.txt')))
     settings.add_command(label='打开日志文件夹', command=lambda: os.startfile(str(BASE)))
@@ -246,7 +335,11 @@ def dispatch():
         from portable_selftest import run
         run(Path(sys.argv[2]))
         return
+    from minimal_mode import enabled as minimal_enabled, shift_requested
     if len(sys.argv) > 1 and sys.argv[1] in ('--startup-guard', '--auto-switch'):
+        if minimal_enabled():
+            event('launcher', '最简模式不执行后台任务', mode=sys.argv[1])
+            return
         with instance_lock('authentication') as acquired:
             if not acquired:
                 event('launcher', '后台任务跳过', reason='另一个认证或验证任务正在执行', mode=sys.argv[1])
@@ -257,11 +350,16 @@ def dispatch():
             import auto_switch
             sys.argv = [sys.argv[0]]
             raise SystemExit(auto_switch.main())
+    simple = ('--minimal' in sys.argv or minimal_enabled()) and '--full' not in sys.argv and not shift_requested()
     with instance_lock('ui') as acquired:
         if not acquired:
+            if simple:
+                from switch_notifications import notify_result
+                notify_result('JMU 夜间联网', '已有窗口或认证操作正在运行，请稍后再试。', warning=True)
+                return
             messagebox.showinfo('JMU 夜间联网', '助手已经打开，请查看已有窗口。')
             return
-        main()
+        run_minimal() if simple else main()
 
 
 if __name__ == '__main__':

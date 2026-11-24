@@ -3,10 +3,10 @@ from runtime_support import read_config, probe_network, wait_check, auth_mode, s
 from nic_manager import resolve_nic, NicError
 from switch_notifications import record_switch, notify_night_failure, read_switch_status
 # -*- coding: utf-8 -*-
-"""Only prepare and maintain the night connection during its scheduled window.
+"""Night switching plus at most four half-hour attempts to restore the carrier.
 
 Ordinary daytime invocations exit before configuration, NIC or network queries.
-Historical failures and --force cannot bypass the daytime guard.
+Only the explicit recovery slots may touch an existing night connection.
 """
 import argparse
 import datetime
@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 from office_ip_policy import check_office_ip
-from schedule import is_blackout, should_prepare_bypass, should_run
+from schedule import is_blackout, should_prepare_bypass, should_run, is_carrier_recovery_time
 
 from package_runtime import data_dir
 BASE = str(data_dir())
@@ -115,6 +115,67 @@ def switch_to(mode, conf, nic, *, stability=False):
     return ok
 
 
+def visit_carrier_portal(nic):
+    """Request the local portal silently; its HTTP response is not auth proof."""
+    adapter = resolve_nic(preferred=nic)
+    if adapter['device'].casefold() != nic.casefold() or not adapter.get('ip'):
+        raise NicError('所选有线网卡已改变或没有地址，停止本次运营商恢复。')
+    try:
+        result = subprocess.run(['curl.exe', '-sS', '--noproxy', '*', '--interface', adapter['ip'],
+                                 '--connect-timeout', '2', '--max-time', '4', '-o', 'NUL',
+                                 '-w', '%{http_code}', 'http://10.8.2.2/'],
+                                capture_output=True, timeout=5, creationflags=NO_WINDOW)
+        code = result.stdout.decode('ascii', errors='replace').strip()
+        reached = result.returncode == 0 and code.isdigit() and 200 <= int(code) < 400
+        event('carrier', '静默访问运营商入口', http_status=code, curl_exit=result.returncode,
+              reached=reached, authentication_verified=False)
+        return reached
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        event('carrier', '访问运营商入口未完成', level='WARNING', reason=type(exc).__name__)
+        return False
+
+
+def recover_carrier(now):
+    day = now.date().isoformat()
+    slot = now.replace(minute=(now.minute // 30) * 30, second=0, microsecond=0).isoformat(timespec='minutes')
+    previous = read_switch_status()
+    attempts = previous.get('carrier_recovery_attempts', 0) if previous.get('carrier_recovery_day') == day else 0
+    attempts = attempts if isinstance(attempts, int) and attempts >= 0 else 0
+    if (previous.get('carrier_recovered_day') == day or attempts >= 4 or
+            previous.get('carrier_recovery_slot') == slot):
+        event('carrier', '本轮不再尝试运营商恢复', attempts=attempts, day=day)
+        return 0
+    try:
+        mode = current_mode()
+        if mode == 'normal':
+            event('carrier', '当前已使用运营商认证，保持原连接')
+            return 0
+        if mode != 'bypass' and read_auth_state().get('mode') != 'bypass':
+            event('carrier', '没有需要恢复的夜间连接，保持现状')
+            return 0
+        # Persist the attempt before any portal/auth work: task restarts cannot
+        # repeat a slot or reset the daily cap. Rollback is part of this attempt.
+        record_switch('PENDING', 'normal', '静默尝试恢复运营商，等待本次认证及联网验证',
+                      carrier_recovery_day=day, carrier_recovery_attempts=attempts + 1,
+                      carrier_recovery_slot=slot)
+        conf = read_conf()
+        nic = read_nic()
+        visit_carrier_portal(nic)
+        if switch_to('normal', conf, nic):
+            record_switch('VERIFIED', 'normal', '运营商认证与有线联网已确认，当天停止恢复尝试',
+                          connected=True, carrier_recovered_day=day)
+            return 0
+        restored = switch_to('bypass', conf, nic)
+        record_switch('FAILED', 'normal',
+                      '运营商恢复未通过验证；已恢复夜间连接' if restored else '运营商恢复及夜间回退均未通过验证',
+                      connected=restored, restored_mode='bypass' if restored else None)
+        return 1
+    except Exception as exc:
+        event('carrier', '本次运营商恢复未完成', level='WARNING', reason=str(exc))
+        record_switch('FAILED', 'normal', '运营商恢复未完成：' + str(exc), connected=False)
+        return 2
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true")
@@ -126,6 +187,8 @@ def main():
     # Daytime connectivity is managed by the existing session or an explicit
     # user action. A historical failure must never reopen automatic recovery.
     if not night and not prepare:
+        if is_carrier_recovery_time(now):
+            return recover_carrier(now)
         event("scheduler", "正常时段不执行自动联网检测或认证")
         return 0
     previous_switch = read_switch_status()

@@ -61,3 +61,17 @@ def notify_night_failure(*, now=None, connected=False, reason='本次夜间认�
     except OSError as exc:
         event('notification', '无法请求系统通知', level='WARNING', error_type=type(exc).__name__)
         return False
+
+
+def notify_result(title, message, *, warning=False):
+    """Request one native Windows notification; never open a dialog."""
+    try:
+        subprocess.Popen(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                          str(data_dir() / 'notify.ps1'), '-Title', title, '-Message', message,
+                          '-Kind', 'Warning' if warning else 'Information'],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=0x08000000)
+        return True
+    except OSError as exc:
+        event('notification', '无法请求系统通知', level='WARNING', error_type=type(exc).__name__)
+        return False

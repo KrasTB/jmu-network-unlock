@@ -9,7 +9,7 @@ import sys
 import tempfile
 import zipfile
 
-VERSION = '0.1.2'
+VERSION = '0.1.3'
 ASSETS = ('jmusupplicant.exe', 'libiconv-2.dll', 'getnic.ps1', 'install_npcap.ps1', 'holidays.txt', 'notify.ps1')
 
 

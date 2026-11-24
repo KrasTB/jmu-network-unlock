@@ -68,4 +68,11 @@ def should_run(dt=None):
     dt = dt or datetime.datetime.now()
     if should_prepare_bypass(dt) or is_blackout(dt):
         return dt.minute % 2 == 0
-    return False
+    return is_carrier_recovery_time(dt)
+
+
+def is_carrier_recovery_time(dt=None):
+    """Half-hour daytime slots, with a small grace window for task startup."""
+    dt = dt or datetime.datetime.now()
+    return (dt.hour >= RECOVER_HOUR and dt.minute % 30 < 2 and
+            not is_blackout(dt) and not should_prepare_bypass(dt))

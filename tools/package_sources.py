@@ -5,7 +5,7 @@ import subprocess
 import urllib.request
 import zipfile
 
-VERSION = '0.1.2'
+VERSION = '0.1.3'
 ICONV_SHA256 = '88dd96a8c0464eca144fc791ae60cd31cd8ee78321e67397e25fc095c4a19aa6'
 
 

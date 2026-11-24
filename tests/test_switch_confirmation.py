@@ -21,6 +21,7 @@ class SwitchConfirmationTests(unittest.TestCase):
                     stack.enter_context(patch.object(scheduler, 'is_blackout', return_value=False))
                     stack.enter_context(patch.object(scheduler, 'should_prepare_bypass', return_value=False))
                     stack.enter_context(patch.object(scheduler, 'should_run', return_value=True))
+                    stack.enter_context(patch.object(scheduler, 'is_carrier_recovery_time', return_value=False))
                     stack.enter_context(patch.object(scheduler, 'read_switch_status', return_value={'status':'FAILED', 'connected':False}))
                     mocks = [stack.enter_context(patch.object(scheduler, name)) for name in
                              ('read_conf', 'read_nic', 'current_mode', 'online', 'switch_to', 'notify_night_failure')]
@@ -28,11 +29,11 @@ class SwitchConfirmationTests(unittest.TestCase):
                     for mock in mocks:
                         mock.assert_not_called()
 
-    def test_schedule_has_no_ordinary_daytime_check_window(self):
+    def test_schedule_has_no_daytime_checks_between_half_hour_recovery_slots(self):
         import schedule
         with patch.object(schedule, 'load_holidays', return_value=set()):
             for hour in (6, 12, 18, 21):
-                self.assertFalse(schedule.should_run(datetime.datetime(2026, 11, 24, hour, 0)))
+                self.assertFalse(schedule.should_run(datetime.datetime(2026, 11, 24, hour, 15)))
             self.assertTrue(schedule.should_run(datetime.datetime(2026, 11, 24, 22, 52)))
             self.assertTrue(schedule.should_run(datetime.datetime(2026, 11, 24, 23, 0)))
 
