@@ -37,6 +37,9 @@ def record_switch(status, mode, reason='', **fields):
 
 
 def notify_night_failure(*, now=None, connected=False, reason='本次夜间认证尚未确认成功'):
+    from network_restore import paused
+    if paused():
+        return False
     now = now or datetime.datetime.now()
     if not is_blackout(now):
         return False

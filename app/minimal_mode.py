@@ -36,6 +36,8 @@ def authenticate_once(conf, nic):
             if not acquired:
                 notify_result('JMU 夜间联网', '已有认证任务进行中，请稍后再试。', warning=True)
                 return 1
+            from network_restore import resume
+            resume()
             if probe_device(nic, timeout=4, component='minimal'):
                 notify_result('JMU 夜间联网', '有线联网已验证可用，无需重新认证。')
                 return 0

@@ -104,6 +104,9 @@ def switch_to(mode, conf, nic, *, stability=False):
     kill_proc()
     start_proc(mode, conf, nic)
     ok, elapsed = wait_online(35)
+    from network_restore import paused
+    if paused():
+        return False
     if ok and stability:
         ok = monitor_stability(mode, nic, HOLD_SEC, 2)
     auth_state(mode, nic, verified=ok)
@@ -161,7 +164,11 @@ def recover_carrier(now):
         conf = read_conf()
         nic = read_nic()
         visit_carrier_portal(nic)
-        if switch_to('normal', conf, nic):
+        ok = switch_to('normal', conf, nic)
+        from network_restore import paused
+        if paused():
+            return 0
+        if ok:
             record_switch('VERIFIED', 'normal', '运营商认证与有线联网已确认，当天停止恢复尝试',
                           connected=True, carrier_recovered_day=day)
             return 0
@@ -171,6 +178,9 @@ def recover_carrier(now):
                       connected=restored, restored_mode='bypass' if restored else None)
         return 1
     except Exception as exc:
+        from network_restore import paused
+        if paused():
+            return 0
         event('carrier', '本次运营商恢复未完成', level='WARNING', reason=str(exc))
         record_switch('FAILED', 'normal', '运营商恢复未完成：' + str(exc), connected=False)
         return 2
@@ -225,6 +235,9 @@ def main():
             event("scheduler", "暂缓重复认证", level='DEBUG', reason="距离上次尝试不足90秒", age=round(age, 1))
             return 1
         ok = switch_to(desired, conf, nic)
+        from network_restore import paused
+        if paused():
+            return 0
         if not ok:
             if prepare and mode == "normal" and not online():
                 log("提前夜间认证失败且网络不可用，先恢复正常时段运营商连接")
@@ -236,6 +249,9 @@ def main():
                 notify_night_failure(now=now, connected=online())
         return 0 if ok else 1
     except Exception as exc:
+        from network_restore import paused
+        if paused():
+            return 0
         event("scheduler", "自动切换失败", level="ERROR", reason=str(exc), error_type=type(exc).__name__)
         record_switch("FAILED", "bypass" if night or prepare else "normal", str(exc), connected=False)
         if night:

@@ -56,6 +56,7 @@ def run(report):
 
         with tempfile.TemporaryDirectory(prefix='jmu-settings-test-') as directory:
             testdir = Path(directory)
+            office_ip_policy.data_dir = lambda: testdir
             launcher.CFG = testdir / 'config.txt'
             assert launcher.read_fields()[2] == '172.20.1.10'
             root = tk.Tk()
@@ -171,6 +172,7 @@ def run(report):
                 assert not any('热点' in text for text in texts)
                 assert not hasattr(control.App, 'render_hotspot')
                 assert any(text == '夜间认证' for text in texts)
+                assert any(text == '停止代理并恢复默认网络' for text in texts)
                 windows.append(True)
                 window.destroy()
             tk.Misc.mainloop = inspect_window

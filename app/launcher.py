@@ -188,6 +188,17 @@ def set_task(enabled):
         raise RuntimeError('系统未能更新自动切换任务，请检查任务计划程序权限。')
 
 
+def disable_background_tasks():
+    for name in (TASK, 'JMU_AutoSwitchHourly'):
+        query = subprocess.run(['schtasks', '/Query', '/TN', name], capture_output=True,
+                               creationflags=NO_WINDOW, timeout=12)
+        if query.returncode == 0:
+            result = subprocess.run(['schtasks', '/Change', '/TN', name, '/Disable'],
+                                    capture_output=True, creationflags=NO_WINDOW, timeout=15)
+            if result.returncode:
+                raise RuntimeError('无法关闭自动任务：' + name)
+
+
 def ensure_nic():
     return resolve_nic(force=True)
 
@@ -286,6 +297,9 @@ def main():
     def change(variable, action):
         try:
             action(variable.get())
+            if variable.get() and action in (set_autostart, set_task):
+                from network_restore import resume
+                resume()
             event('settings', '自动功能设置已更新', setting=action.__name__, enabled=variable.get())
             app.tip.config(text='自动功能设置已更新。')
         except Exception as exc:
@@ -297,6 +311,7 @@ def main():
                              command=lambda: change(boot, set_autostart))
     settings.add_checkbutton(label='自动切换（夜间／早间恢复）', variable=periodic,
                              command=lambda: change(periodic, set_task))
+    app._automatic_stopped = lambda: (boot.set(False), periodic.set(False))
     from minimal_mode import enabled as minimal_enabled, set_enabled as save_minimal
     simple = tk.BooleanVar(value=minimal_enabled())
     def change_minimal():
@@ -341,6 +356,10 @@ def dispatch():
         return
     from minimal_mode import enabled as minimal_enabled, shift_requested
     if len(sys.argv) > 1 and sys.argv[1] in ('--startup-guard', '--auto-switch'):
+        from network_restore import paused
+        if paused():
+            event('launcher', '用户已停止认证，不执行后台任务', level='DEBUG')
+            return
         if minimal_enabled():
             event('launcher', '最简模式不执行后台任务', mode=sys.argv[1])
             return

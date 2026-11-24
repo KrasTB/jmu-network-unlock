@@ -20,6 +20,7 @@
 
 **npcap安装时勾选☑ Install Npcap in WinPcap API-compatible Mode**
 
+- **停止代理并恢复默认网络**：停止本项目全部认证进程、关闭自启动和自动任务，打开 `10.8.2.2` 正常认证入口。保留账号及 Windows 网络设置；再次使用时点击“重新认证”，自动功能按需重新开启。此按钮只管理本项目。
 - 未自动识别网卡时，在 **设置 → 认证网卡** 手动选择。
 - **重新认证**按时段选择方案；**夜间认证**手动尝试夜间方案，期间可能短暂断网。
 - “有线已连接”表示链路接通；“有线可上网 · 已验证”表示最近一次联网检测通过。进程运行和历史记录不等于当前能上网。
@@ -46,7 +47,7 @@ GUI 构建需要 Windows x64、Python 3.12（含 tkinter）：
 py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements-build.txt
 # 从同版本发行包提取已验证的核心和 DLL；也可自行编译 core/。
-.venv\Scripts\python tools\prepare_runtime.py --archive 路径\JMU-night-network-windows-x64-v0.1.4.zip
+.venv\Scripts\python tools\prepare_runtime.py --archive 路径\JMU-night-network-windows-x64-v0.1.5.zip
 .venv\Scripts\python -m unittest discover -s tests -v
 .venv\Scripts\python tools\build.py
 ```

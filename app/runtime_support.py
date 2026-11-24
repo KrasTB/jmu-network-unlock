@@ -91,11 +91,12 @@ def wait_check(probe, timeout=40, interval=2, *, component='authentication'):
     return False, elapsed
 
 
-def process_info():
+def process_info(*, all_copies=False):
     exe = str(data_dir() / 'jmusupplicant.exe').replace("'", "''")
+    scope = '' if all_copies else "Where-Object {$_.ExecutablePath -eq '" + exe + "'} | "
     script = ("$ErrorActionPreference='Stop';[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false);"
               "$items=@(Get-CimInstance Win32_Process -Filter \"Name='jmusupplicant.exe'\" | "
-              "Where-Object {$_.ExecutablePath -eq '" + exe + "'} | ForEach-Object {"
+              + scope + "ForEach-Object {"
               "[pscustomobject]@{pid=$_.ProcessId;mode=$(if($_.CommandLine -match '(^|\\s)-n(\\s|$)'){'bypass'}else{'normal'})}});"
               "ConvertTo-Json -InputObject $items -Compress")
     try:
@@ -213,6 +214,10 @@ def wait_authentication(mode, device=None, timeout=35, interval=1, *, component=
     started = time.monotonic()
     deadline = started + timeout
     while time.monotonic() < deadline:
+        from network_restore import paused
+        if paused():
+            event(component, '认证验证已取消', reason='用户停止并恢复默认网络')
+            return False, math.ceil(time.monotonic() - started)
         current = read_auth_state()
         if not attempt or current.get('attempt') != attempt:
             event(component, '认证任务已更换，停止验证旧任务', level='WARNING')
@@ -247,8 +252,8 @@ def monitor_stability(mode, device, seconds=60, interval=2):
         time.sleep(min(interval, remaining))
 
 
-def stop_core(wait=7):
-    records = process_info()
+def stop_core(wait=7, *, all_copies=False):
+    records = process_info(all_copies=True) if all_copies else process_info()
     for record in records:
         result = subprocess.run(['taskkill.exe', '/F', '/PID', str(int(record['pid']))],
                                 capture_output=True, timeout=12, creationflags=NO_WINDOW)
@@ -260,6 +265,9 @@ def stop_core(wait=7):
 
 
 def start_core(mode, conf, nic):
+    from network_restore import paused
+    if paused():
+        raise RuntimeError('本项目认证已暂停，请手动点击“重新认证”后再试。')
     exe = str(data_dir() / 'jmusupplicant.exe')
     pending = data_dir() / '.pending-core' / 'jmusupplicant.exe'
     if pending.exists():
@@ -277,6 +285,8 @@ def start_core(mode, conf, nic):
     event('authentication', '启动认证', mode=mode, service=conf['svc'], device=nic,
           office_ip=conf['oip'] if mode == 'bypass' else None)
     try:
+        if paused():
+            raise RuntimeError('认证已被“停止并恢复默认网络”取消。')
         proc = subprocess.Popen(args, cwd=str(data_dir()), env=environment,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL, creationflags=NO_WINDOW)
@@ -285,6 +295,10 @@ def start_core(mode, conf, nic):
               winerror=getattr(exc, 'winerror', None))
         raise RuntimeError('认证程序未能启动，请检查程序文件和访问权限。') from None
     event('authentication', '认证进程已启动', pid_target=proc.pid, mode=mode)
+    if paused():
+        subprocess.run(['taskkill.exe', '/F', '/PID', str(proc.pid)], capture_output=True,
+                       timeout=12, creationflags=NO_WINDOW)
+        raise RuntimeError('认证已被“停止并恢复默认网络”取消。')
     def monitor():
         code = proc.wait()
         event('authentication', '认证进程退出', level='INFO' if code == 0 else 'WARNING',
@@ -303,6 +317,8 @@ def manual_auth(app, mode, service=None):
     started = time.monotonic()
     app._auth_phase = '检查配置和网卡'
     try:
+        from network_restore import resume
+        resume()
         conf = read_config(data_dir() / 'config.txt')
         if service is not None:
             conf['svc'] = service

@@ -231,6 +231,10 @@ class App:
                 self.btn_relogin = b
 
         # ---- 诊断输出区（默认折叠）----
+        tk.Button(root, text='停止代理并恢复默认网络', command=self.on_restore_default,
+                  bg='#566573', fg='white', relief='flat', font=('Microsoft YaHei', 10)).pack(
+                      fill='x', padx=16, pady=(2, 6))
+
         self.diag_frame = tk.Frame(root, bg=BG)
         self.diag_text = tk.Text(self.diag_frame, height=10, bg="#1e1e1e", fg="#d4d4d4",
                                  font=("Consolas", 9), wrap="word", relief="flat")
@@ -328,6 +332,9 @@ class App:
         self.head.config(text=title, fg=color)
         mode = getattr(self, "bypass_mode", None)
         badge = "最近方案：" + ("夜间认证" if mode is True else "运营商认证" if mode is False else "暂无记录")
+        from network_restore import paused
+        if paused():
+            badge = '本项目自动认证已暂停'
         self.mode_badge.config(text=badge, bg="#ecf0f1", fg="#566573")
         startup = snap.get("_startup", {})
         labels = {"WAITING": "等待有线网卡", "AUTHENTICATING": "认证中，尚未验证联网",
@@ -354,7 +361,9 @@ class App:
         switch_text = {'FAILED': switch.get('reason') or '自动切换未确认成功，请查看运行日志',
                        'PENDING': '正在认证，等待本次服务器回应与联网验证',
                        'VERIFIED': '最近一次切换已验证',
-                       'CONNECTED': '有线联网已恢复，未重新认证'}.get(switch.get('status'), '暂无记录')
+                       'CONNECTED': '有线联网已恢复，未重新认证',
+                       'STOPPED': '本项目认证已停止，可使用校园网正常入口',
+                       'RESTORE_INCOMPLETE': switch.get('reason', '部分停止操作未完成')}.get(switch.get('status'), '暂无记录')
         rows = [("认证网卡", snap.get("NIC_NAME") or "尚未选定"),
                 ("网卡检查", snap.get("NIC_ERROR") or ("链路已连接" if up else "链路未就绪")),
                 ("有线地址", ip or "尚未取得"),
@@ -391,6 +400,35 @@ class App:
 
     def _connect_bypass(self):
         return manual_auth(self, "bypass")
+
+    def on_restore_default(self):
+        if getattr(self, '_restore_busy', False):
+            return
+        self._restore_busy = True
+        self.tip.config(text='正在停止本项目认证与自动任务，随后打开校园网正常认证入口…')
+        def work():
+            from network_restore import restore_default
+            from launcher import set_autostart, disable_background_tasks
+            try:
+                errors = restore_default(set_autostart, disable_background_tasks)
+                text = '部分操作未完成：' + '；'.join(errors) if errors else '本项目认证及自动功能已停止，请在校园网入口正常认证。'
+                if not errors:
+                    try:
+                        os.startfile('http://10.8.2.2/')
+                    except OSError:
+                        text += ' 请手动打开 http://10.8.2.2/。'
+                def update():
+                    self._restore_busy = False
+                    self.tip.config(text=text)
+                    callback = getattr(self, '_automatic_stopped', None)
+                    if callback and not errors:
+                        callback()
+                self.root.after(0, update)
+            except Exception as exc:
+                message = '停止操作未完成：' + str(exc)
+                self._restore_busy = False
+                self.root.after(0, lambda: self.tip.config(text=message))
+        threading.Thread(target=work, name='restore-default-network', daemon=True).start()
 
     def on_force_bypass(self):
         """「破解」按钮：任何时候都能强制切到「办公区 IP + 教育网」（-n）。
