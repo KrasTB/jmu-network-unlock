@@ -47,8 +47,13 @@ def main():
                        if not key.upper().startswith(('PYTHON', 'TCL', 'TK_'))}
         environment['PATH'] = str(Path(os.environ['SystemRoot']) / 'System32')
         report = output / 'selftest.json'
-        subprocess.run([str(release / '校园网助手.exe'), '--self-test', str(report)],
-                       env=environment, check=True, timeout=60)
+        result = subprocess.run([str(release / '校园网助手.exe'), '--self-test', str(report)],
+                                env=environment, check=False, timeout=60)
+        if report.exists():
+            print(report.read_text(encoding='utf-8'), flush=True)
+        else:
+            print('The standalone executable did not produce its diagnostic report.', flush=True)
+        result.check_returncode()
         assert json.loads(report.read_text(encoding='utf-8'))['ok']
         # Self-test output is never included in the distributed directory.
         archive = output / ('JMU-campus-auth-windows-x64-v' + VERSION + '.zip')
