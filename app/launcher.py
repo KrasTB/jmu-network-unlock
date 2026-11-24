@@ -79,8 +79,13 @@ def configure(parent):
         dialog.destroy()
 
     ttk.Button(dialog, text='保存', command=save).grid(row=6, column=0, columnspan=2, pady=12)
+    # Map the dialog before entering the modal loop. Slow Windows font/widget
+    # initialization can otherwise let an earlier callback run before the show timer.
+    dialog.deiconify()
+    dialog.update_idletasks()
+    dialog.lift()
+    dialog.focus_force()
     dialog.grab_set()
-    dialog.after(1, lambda: (dialog.deiconify(), dialog.lift(), dialog.focus_force()))
     parent.wait_window(dialog)
     return saved[0]
 

@@ -55,9 +55,11 @@ def run(report):
                     entry.insert(0, value)
                 next(w for w in window.winfo_children() if type(w) is ttk.Button).invoke()
 
-            root.after(150, save_form)
+            # Exercise an already-due callback: the dialog must be visible before
+            # interaction, even when widget/font initialization was slow.
+            root.after(0, save_form)
             assert launcher.configure(root)
-            assert observations == [True]
+            assert observations == [True], 'First-run dialog was not mapped before interaction'
             fields = launcher.CFG.read_text(encoding='utf-8').split()
             assert fields[0] == 'test-account' and fields[2] == '172.20.1.10'
             results.append('first_run_dialog_visible_and_config_saved')

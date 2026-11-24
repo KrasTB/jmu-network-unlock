@@ -52,6 +52,26 @@ class ModuleReviewTests(unittest.TestCase):
             with patch.object(subprocess, 'run', return_value=subprocess.CompletedProcess([], exit_code, b'204', b'')):
                 self.assertEqual(self.control.probe_net('10.0.0.8'), expected)
 
+    def test_first_run_dialog_is_mapped_before_an_already_due_callback(self):
+        import launcher
+        import tkinter as tk
+        from tkinter import ttk
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'config.txt'
+            config.write_text('test-account test-password 172.20.1.10 255.255.0.0 3', encoding='utf-8')
+            root = tk.Tk()
+            root.withdraw()
+            visible = []
+            def interact():
+                window = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
+                visible.append(bool(window.winfo_viewable()))
+                next(w for w in window.winfo_children() if type(w) is ttk.Button).invoke()
+            root.after(0, interact)
+            with patch.object(launcher, 'CFG', config):
+                self.assertTrue(launcher.configure(root))
+            root.destroy()
+            self.assertEqual(visible, [True])
+
     def test_timeout_includes_probe_duration(self):
         import runtime_support as support
         clock = [0.0]
