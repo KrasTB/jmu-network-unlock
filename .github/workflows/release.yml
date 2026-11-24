@@ -8,6 +8,8 @@ on:
       - 'tools/**'
       - 'vendor/**'
       - 'licenses/**'
+      - 'VERSION'
+      - 'RELEASE_NOTES.md'
       - '.github/workflows/release.yml'
   workflow_dispatch:
 permissions:
@@ -20,14 +22,20 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Prepare verified runtime binaries
+      - name: Resolve version and verify runtime
         shell: pwsh
         run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid VERSION' }
+          "RELEASE_VERSION=$version" | Add-Content $env:GITHUB_ENV
           Copy-Item vendor/runtime/* app/
           $manifest = Get-Content core/binary-manifest.json | ConvertFrom-Json
           foreach ($item in $manifest.PSObject.Properties) {
@@ -39,33 +47,91 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Install build tools
         run: python -m pip install -r requirements-build.txt
-      - name: Build Windows package
+      - name: Build current Windows package
         run: python tools/build.py
       - name: Package complete corresponding source
         run: python tools/package_sources.py
       - name: Write checksums
         shell: pwsh
         run: |
-          $files = Get-ChildItem dist -File -Filter '*.zip'
-          $lines = foreach ($file in $files) {
-            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
-            "$hash  $($file.Name)"
+          $lines = foreach ($file in (Get-ChildItem dist -File -Filter '*.zip')) {
+            "$((Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower())  $($file.Name)"
           }
           $lines | Set-Content dist/SHA256SUMS.txt -Encoding ascii
-      - name: Publish v0.1.5 if absent
+      - name: Publish consolidated version
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
-          gh release view v0.1.5 *> $null
+          $tag = "v$env:RELEASE_VERSION"
+          gh api "repos/$env:GH_REPO/git/ref/tags/$tag" *> $null
           if ($LASTEXITCODE -eq 0) {
-            Write-Output 'v0.1.5 already exists; keeping the published assets.'
-            exit 0
+            gh api --method PATCH "repos/$env:GH_REPO/git/refs/tags/$tag" -f "sha=$env:GITHUB_SHA" -F force=true | Out-Null
+          } else {
+            gh api --method POST "repos/$env:GH_REPO/git/refs" -f "ref=refs/tags/$tag" -f "sha=$env:GITHUB_SHA" | Out-Null
           }
-          gh release create v0.1.5 `
-            dist/JMU-night-network-windows-x64-v0.1.5.zip `
-            dist/JMU-night-network-complete-source-v0.1.5.zip `
-            dist/SHA256SUMS.txt `
-            --target $env:GITHUB_SHA --title 'JMU 夜间联网 v0.1.5' --notes-file RELEASE_NOTES.md
-          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to publish version tag' }
+          $assets = @("dist/JMU-night-network-windows-x64-$tag.zip", "dist/JMU-night-network-complete-source-$tag.zip", 'dist/SHA256SUMS.txt')
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @assets --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
+            gh release edit $tag --title "JMU 夜间联网 $tag" --notes-file RELEASE_NOTES.md --latest
+          } else {
+            gh release create $tag @assets --target $env:GITHUB_SHA --title "JMU 夜间联网 $tag" --notes-file RELEASE_NOTES.md --latest
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Consolidated release publication failed' }
+      - name: Check initial release
+        shell: pwsh
+        run: |
+          gh release view v0.1.0 *> $null
+          $missing = ($LASTEXITCODE -ne 0).ToString().ToLowerInvariant()
+          "INITIAL_MISSING=$missing" | Add-Content $env:GITHUB_ENV
+          exit 0
+      - uses: actions/checkout@v4
+        if: env.INITIAL_MISSING == 'true'
+        with:
+          ref: v0.1.0
+          path: initial-release
+      - name: Restore missing initial release from its original source
+        if: env.INITIAL_MISSING == 'true'
+        shell: pwsh
+        run: |
+          Push-Location initial-release
+          try {
+            Copy-Item vendor/runtime/* app/
+            python tools/build.py
+            if ($LASTEXITCODE -ne 0) { throw 'Initial Windows package build failed' }
+            python tools/package_sources.py
+            if ($LASTEXITCODE -ne 0) { throw 'Initial source package build failed' }
+            $lines = foreach ($file in (Get-ChildItem dist -File -Filter '*.zip')) {
+              "$((Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower())  $($file.Name)"
+            }
+            $lines | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+            $sha = git rev-parse HEAD
+            gh release create v0.1.0 dist/JMU-campus-auth-windows-x64-v0.1.0.zip dist/JMU-campus-auth-complete-source-v0.1.0.zip dist/SHA256SUMS.txt --target $sha --title '校园网助手 v0.1.0（初始版本）' --notes '保留最初公开版本供历史参考。日常使用请下载最新的整合版 v0.1.2。' --latest=false
+            if ($LASTEXITCODE -ne 0) { throw 'Initial release restoration failed' }
+          } finally { Pop-Location }
+      - name: Keep only the initial and current versions
+        shell: pwsh
+        run: |
+          $keep = @('v0.1.0', "v$env:RELEASE_VERSION")
+          $releases = gh release list --limit 100 --json tagName | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to list releases' }
+          foreach ($release in $releases) {
+            if ($release.tagName -notin $keep) {
+              gh release delete $release.tagName --yes --cleanup-tag
+              if ($LASTEXITCODE -ne 0) { throw "Unable to delete $($release.tagName)" }
+            }
+          }
+          $refs = gh api "repos/$env:GH_REPO/git/matching-refs/tags" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to list version tags' }
+          foreach ($ref in $refs) {
+            $tag = $ref.ref -replace '^refs/tags/', ''
+            if ($tag -match '^v0\.1\.\d+$' -and $tag -notin $keep) {
+              gh api --method DELETE "repos/$env:GH_REPO/git/refs/tags/$tag"
+              if ($LASTEXITCODE -ne 0) { throw "Unable to delete tag $tag" }
+            }
+          }
+          $remaining = gh release list --limit 100 --json tagName | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or @($remaining).Count -ne 2 -or @($remaining | Where-Object {$_.tagName -notin $keep}).Count -ne 0) {
+            throw 'Unexpected release inventory after consolidation'
+          }

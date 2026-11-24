@@ -47,7 +47,7 @@ GUI 构建需要 Windows x64、Python 3.12（含 tkinter）：
 py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements-build.txt
 # 从同版本发行包提取已验证的核心和 DLL；也可自行编译 core/。
-.venv\Scripts\python tools\prepare_runtime.py --archive 路径\JMU-night-network-windows-x64-v0.1.5.zip
+.venv\Scripts\python tools\prepare_runtime.py --archive 路径\JMU-night-network-windows-x64-v0.1.2.zip
 .venv\Scripts\python -m unittest discover -s tests -v
 .venv\Scripts\python tools\build.py
 ```

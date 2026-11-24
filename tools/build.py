@@ -9,7 +9,7 @@ import sys
 import tempfile
 import zipfile
 
-VERSION = '0.1.5'
+VERSION = (Path(__file__).resolve().parents[1] / 'VERSION').read_text(encoding='ascii').strip()
 ASSETS = ('jmusupplicant.exe', 'libiconv-2.dll', 'getnic.ps1', 'install_npcap.ps1', 'holidays.txt', 'notify.ps1')
 
 

@@ -5,7 +5,7 @@ import subprocess
 import urllib.request
 import zipfile
 
-VERSION = '0.1.5'
+VERSION = (Path(__file__).resolve().parents[1] / 'VERSION').read_text(encoding='ascii').strip()
 ICONV_SHA256 = '88dd96a8c0464eca144fc791ae60cd31cd8ee78321e67397e25fc095c4a19aa6'
 
 
