@@ -24,7 +24,7 @@
 - **重新认证**按时段选择方案；**夜间认证**手动尝试夜间方案，期间可能短暂断网。
 - “有线已连接”表示链路接通；“有线可上网 · 已验证”表示最近一次联网检测通过。进程运行和历史记录不等于当前能上网。
 
-时间规则：周一至周四 23:00、周五至周日 24:00 起进入夜间时段，06:00 恢复；提前 8 分钟准备。关闭主窗口后仍由计划任务检查；到限制时段仍未确认夜间认证成功时，仅请求 Windows 右下角通知，同一次持续故障不重复提醒。系统通知设置可能隐藏提示。节假日文件需按学校通知维护，当前附表仅含 2026 年。
+时间规则：周一至周四 23:00、周五至周日 24:00 起进入夜间时段，06:00 恢复；提前 8 分钟准备。正常时段不执行后台联网检测、自动切换或恢复重认证；06:00 后也不会自动切回运营商，需要时手动点击“重新认证”。窗口中的联网状态检测只刷新显示，不触发认证；已启用的登录后自动认证独立生效。关闭主窗口后仍由计划任务检查；到限制时段仍未确认夜间认证成功时，仅请求 Windows 右下角通知，同一次持续故障不重复提醒。系统通知设置可能隐藏提示。节假日文件需按学校通知维护，当前附表仅含 2026 年。
 
 办公区认证 IP 默认 `172.20.1.10`，不同账号、端口及学校是否适用需实测，不保证绕过限制或无感切换。
 
@@ -40,7 +40,7 @@ GUI 构建需要 Windows x64、Python 3.12（含 tkinter）：
 py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements-build.txt
 # 从同版本发行包提取已验证的核心和 DLL；也可自行编译 core/。
-.venv\Scripts\python tools\prepare_runtime.py --archive 路径\JMU-night-network-windows-x64-v0.1.1.zip
+.venv\Scripts\python tools\prepare_runtime.py --archive 路径\JMU-night-network-windows-x64-v0.1.2.zip
 .venv\Scripts\python -m unittest discover -s tests -v
 .venv\Scripts\python tools\build.py
 ```

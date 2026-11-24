@@ -12,6 +12,30 @@ import runtime_support as support
 
 
 class SwitchConfirmationTests(unittest.TestCase):
+    def test_daytime_scheduler_never_probes_or_reauthenticates_even_after_failure(self):
+        import auto_switch as scheduler
+        for hour in (6, 12, 18, 21):
+            for force in (False, True):
+                with self.subTest(hour=hour, force=force), ExitStack() as stack:
+                    stack.enter_context(patch.object(scheduler.sys, 'argv', ['auto_switch'] + (['--force'] if force else [])))
+                    stack.enter_context(patch.object(scheduler, 'is_blackout', return_value=False))
+                    stack.enter_context(patch.object(scheduler, 'should_prepare_bypass', return_value=False))
+                    stack.enter_context(patch.object(scheduler, 'should_run', return_value=True))
+                    stack.enter_context(patch.object(scheduler, 'read_switch_status', return_value={'status':'FAILED', 'connected':False}))
+                    mocks = [stack.enter_context(patch.object(scheduler, name)) for name in
+                             ('read_conf', 'read_nic', 'current_mode', 'online', 'switch_to', 'notify_night_failure')]
+                    self.assertEqual(scheduler.main(), 0)
+                    for mock in mocks:
+                        mock.assert_not_called()
+
+    def test_schedule_has_no_ordinary_daytime_check_window(self):
+        import schedule
+        with patch.object(schedule, 'load_holidays', return_value=set()):
+            for hour in (6, 12, 18, 21):
+                self.assertFalse(schedule.should_run(datetime.datetime(2026, 11, 24, hour, 0)))
+            self.assertTrue(schedule.should_run(datetime.datetime(2026, 11, 24, 22, 52)))
+            self.assertTrue(schedule.should_run(datetime.datetime(2026, 11, 24, 23, 0)))
+
     def test_cutoff_old_online_session_still_notifies_and_attempts_switch(self):
         import auto_switch as scheduler
         now = datetime.datetime(2026, 11, 24, 23)

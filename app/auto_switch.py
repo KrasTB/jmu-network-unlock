@@ -3,26 +3,10 @@ from runtime_support import read_config, probe_network, wait_check, auth_mode, s
 from nic_manager import resolve_nic, NicError
 from switch_notifications import record_switch, notify_night_failure, read_switch_status
 # -*- coding: utf-8 -*-
-"""每小时尝试把「教育网破解模式」切成「运营商普通模式」。
+"""Only prepare and maintain the night connection during its scheduled window.
 
-策略（2026-10-31 用户要求）：
-    · 每小时试一次（不是只在 6:00 试一次）
-    · 切过去要**二次确认稳定**（静置 60 秒再测），避免「测完通、随后被收回」的假成功
-    · 不稳定就**立刻回退教育网**，保证网络可用
-    · 不做短间隔重试 —— 反复认证会触发学校风控
-
-流程：
-    1. 当前没在跑 / 已是运营商 → 退出
-    2. 教育网当前通吗？不通就先拉起教育网（不在无网状态上做切换）
-    3. 切运营商 → 等端口开 → 测通
-    4. 静置 60 秒 → 再测一次
-        · 两次都通 → 完成，保持运营商
-        · 任一次不通 → 回退教育网 → 结束（等下一个小时）
-
-用法：
-    python auto_switch.py              正常（每小时由计划任务触发）
-    python auto_switch.py --force      即使当前已是运营商也重切一次
-    python auto_switch.py --no-hold    跳过 60 秒稳定性确认（快速调试）
+Ordinary daytime invocations exit before configuration, NIC or network queries.
+Historical failures and --force cannot bypass the daytime guard.
 """
 import argparse
 import datetime
@@ -137,13 +121,18 @@ def main():
     ap.add_argument("--no-hold", action="store_true")
     args = ap.parse_args()
     now = datetime.datetime.now()
+    night = is_blackout(now)
+    prepare = should_prepare_bypass(now)
+    # Daytime connectivity is managed by the existing session or an explicit
+    # user action. A historical failure must never reopen automatic recovery.
+    if not night and not prepare:
+        event("scheduler", "正常时段不执行自动联网检测或认证")
+        return 0
     previous_switch = read_switch_status()
     recovery_due = previous_switch.get("status") == "FAILED" and previous_switch.get("connected") is False
     if not args.force and not should_run(now) and not recovery_due:
         event("scheduler", "本轮无需切换", reason="不在检查窗口")
         return 0
-    night = is_blackout(now)
-    prepare = should_prepare_bypass(now)
     try:
         conf = read_conf()
         nic = read_nic()
@@ -157,14 +146,9 @@ def main():
             return 0
         if night and not accepted_bypass:
             notify_night_failure(now=now, connected=healthy, reason="已到限制时段，提前夜间认证仍未确认")
-        if not night and not prepare and healthy and not args.force:
-            if mode != "bypass" or now.hour >= 22:
-                if recovery_due:
-                    record_switch("CONNECTED", mode, "有线联网已恢复，未重新认证", connected=True)
-                return 0
         if prepare and healthy and accepted_bypass and not args.force:
             return 0
-        desired = "bypass" if night or prepare else "normal"
+        desired = "bypass"
         state = read_auth_state()
         age = max(0, time.time() - state.get("started", 0))
         same_attempt = state.get("mode") == desired and state.get("device") == nic
@@ -177,15 +161,9 @@ def main():
         if same_attempt and age < 90 and not args.force and not state.get("verified"):
             event("scheduler", "暂缓重复认证", reason="距离上次尝试不足90秒", age=round(age, 1))
             return 1
-        ok = switch_to(desired, conf, nic, stability=desired == "normal" and not args.no_hold)
+        ok = switch_to(desired, conf, nic)
         if not ok:
-            if desired == "normal":
-                log("运营商验证失败，立即回退夜间方案")
-                restored = switch_to("bypass", conf, nic)
-                record_switch("FAILED", desired,
-                              "运营商切换失败；已回退并验证联网" if restored else "运营商切换及回退均未通过验证",
-                              connected=restored, restored_mode="bypass" if restored else None)
-            elif prepare and mode == "normal" and not online():
+            if prepare and mode == "normal" and not online():
                 log("提前夜间认证失败且网络不可用，先恢复正常时段运营商连接")
                 restored = switch_to("normal", conf, nic)
                 record_switch("FAILED", "bypass",

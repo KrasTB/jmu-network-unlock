@@ -68,4 +68,4 @@ def should_run(dt=None):
     dt = dt or datetime.datetime.now()
     if should_prepare_bypass(dt) or is_blackout(dt):
         return dt.minute % 2 == 0
-    return dt.minute < 2
+    return False

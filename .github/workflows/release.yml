@@ -52,20 +52,20 @@ jobs:
             "$hash  $($file.Name)"
           }
           $lines | Set-Content dist/SHA256SUMS.txt -Encoding ascii
-      - name: Publish v0.1.1 if absent
+      - name: Publish v0.1.2 if absent
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release view v0.1.1 *> $null
+          gh release view v0.1.2 *> $null
           if ($LASTEXITCODE -eq 0) {
-            Write-Output 'v0.1.1 already exists; keeping the published assets.'
+            Write-Output 'v0.1.2 already exists; keeping the published assets.'
             exit 0
           }
-          gh release create v0.1.1 `
-            dist/JMU-night-network-windows-x64-v0.1.1.zip `
-            dist/JMU-night-network-complete-source-v0.1.1.zip `
+          gh release create v0.1.2 `
+            dist/JMU-night-network-windows-x64-v0.1.2.zip `
+            dist/JMU-night-network-complete-source-v0.1.2.zip `
             dist/SHA256SUMS.txt `
-            --target $env:GITHUB_SHA --title 'JMU 夜间联网 v0.1.1' --notes-file RELEASE_NOTES.md
+            --target $env:GITHUB_SHA --title 'JMU 夜间联网 v0.1.2' --notes-file RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publication failed' }

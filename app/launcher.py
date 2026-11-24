@@ -228,7 +228,7 @@ def main():
 
     settings.add_checkbutton(label='登录 Windows 后自动认证', variable=boot,
                              command=lambda: change(boot, set_autostart))
-    settings.add_checkbutton(label='定时检查与夜间自动切换', variable=periodic,
+    settings.add_checkbutton(label='夜间自动切换', variable=periodic,
                              command=lambda: change(periodic, set_task))
     settings.add_separator()
     settings.add_command(label='编辑节假日', command=lambda: os.startfile(str(BASE / 'holidays.txt')))
