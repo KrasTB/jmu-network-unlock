@@ -100,7 +100,7 @@ def resolve_nic(*, base=None, force=False, preferred=None):
                 preferred = ''
         devices = {s.casefold() for s in capture_devices()}
         for item in info['adapters']:
-            event('nic', '网卡候选检查', base=base, interface=item['name'], device=item['device'],
+            event('nic', '网卡候选检查', level='DEBUG', base=base, interface=item['name'], device=item['device'],
                   status=item.get('status'), wired=item.get('wired'), selectable=item.get('selectable'),
                   visible_to_npcap=item['device'].casefold() in devices)
         visible = [a for a in info['adapters'] if a['device'].casefold() in devices]
@@ -118,7 +118,7 @@ def resolve_nic(*, base=None, force=False, preferred=None):
             os.replace(temp, path)
             event('nic', '已保存网卡选择', base=base, interface=adapter['name'], device=adapter['device'],
                   reason='手动指定' if explicit else '自动识别或恢复有效选择')
-        event('nic', '认证网卡已确认', base=base, interface=adapter['name'], device=adapter['device'],
+        event('nic', '认证网卡已确认', level='DEBUG', base=base, interface=adapter['name'], device=adapter['device'],
               source=adapter.get('ip'), route=info.get('default_alias'))
         adapter.update(default_alias=info.get('default_alias', ''), supp=info.get('supp', ''))
         _cache, _cache_at, _cache_base = adapter, time.monotonic(), base

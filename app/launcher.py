@@ -319,6 +319,10 @@ def main():
             app.tip.config(text='最简模式未能更新：' + str(exc))
     settings.add_separator()
     settings.add_checkbutton(label='最简模式（下次打开直接认证）', variable=simple, command=change_minimal)
+    from runtime_log import debug_enabled, set_debug_logging
+    detailed = tk.BooleanVar(value=debug_enabled())
+    settings.add_checkbutton(label='详细日志（排障时启用）', variable=detailed,
+                             command=lambda: change(detailed, set_debug_logging))
     settings.add_separator()
     settings.add_command(label='编辑节假日', command=lambda: os.startfile(str(BASE / 'holidays.txt')))
     settings.add_command(label='打开日志文件夹', command=lambda: os.startfile(str(BASE)))

@@ -143,15 +143,15 @@ def recover_carrier(now):
     attempts = attempts if isinstance(attempts, int) and attempts >= 0 else 0
     if (previous.get('carrier_recovered_day') == day or attempts >= 4 or
             previous.get('carrier_recovery_slot') == slot):
-        event('carrier', '本轮不再尝试运营商恢复', attempts=attempts, day=day)
+        event('carrier', '本轮不再尝试运营商恢复', level='DEBUG', attempts=attempts, day=day)
         return 0
     try:
         mode = current_mode()
         if mode == 'normal':
-            event('carrier', '当前已使用运营商认证，保持原连接')
+            event('carrier', '当前已使用运营商认证，保持原连接', level='DEBUG')
             return 0
         if mode != 'bypass' and read_auth_state().get('mode') != 'bypass':
-            event('carrier', '没有需要恢复的夜间连接，保持现状')
+            event('carrier', '没有需要恢复的夜间连接，保持现状', level='DEBUG')
             return 0
         # Persist the attempt before any portal/auth work: task restarts cannot
         # repeat a slot or reset the daily cap. Rollback is part of this attempt.
@@ -189,12 +189,12 @@ def main():
     if not night and not prepare:
         if is_carrier_recovery_time(now):
             return recover_carrier(now)
-        event("scheduler", "正常时段不执行自动联网检测或认证")
+        event("scheduler", "正常时段不执行自动联网检测或认证", level='DEBUG')
         return 0
     previous_switch = read_switch_status()
     recovery_due = previous_switch.get("status") == "FAILED" and previous_switch.get("connected") is False
     if not args.force and not should_run(now) and not recovery_due:
-        event("scheduler", "本轮无需切换", reason="不在检查窗口")
+        event("scheduler", "本轮无需切换", level='DEBUG', reason="不在检查窗口")
         return 0
     try:
         conf = read_conf()
@@ -202,7 +202,7 @@ def main():
         mode = current_mode()
         healthy = online()
         accepted_bypass = server_confirmed("bypass", nic)
-        event("scheduler", "切换决策", current_mode=mode, night=night, prepare=prepare,
+        event("scheduler", "切换决策", level='DEBUG', current_mode=mode, night=night, prepare=prepare,
               online=healthy, bypass_server_confirmed=accepted_bypass, service=conf["svc"])
         if night and healthy and accepted_bypass and not args.force:
             record_switch("VERIFIED", "bypass", "夜间认证已确认，有线当前可上网", connected=True)
@@ -222,7 +222,7 @@ def main():
                 record_switch("VERIFIED", desired, "正在进行的认证已完成验证", connected=True)
                 return 0
         if same_attempt and age < 90 and not args.force and not state.get("verified"):
-            event("scheduler", "暂缓重复认证", reason="距离上次尝试不足90秒", age=round(age, 1))
+            event("scheduler", "暂缓重复认证", level='DEBUG', reason="距离上次尝试不足90秒", age=round(age, 1))
             return 1
         ok = switch_to(desired, conf, nic)
         if not ok:

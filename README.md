@@ -28,7 +28,7 @@
 
 办公区认证 IP 默认 `172.20.1.10`，不同账号、端口及学校是否适用需实测，不保证绕过限制或无感切换。
 
-密码保存在本机 `程序/config.txt`。运行日志为 `程序/runtime.log`，隐藏账号密码并自动轮换；反馈问题前仍请检查日志是否含不想公开的网络信息。
+密码保存在本机 `程序/config.txt`。运行日志为 `程序/runtime.log`，默认只记录关键事件和状态变化；当前文件与一份备份各限 512 KiB，合计约 1 MiB。排障时可在设置中开启“详细日志”，同样遵守容量上限。日志隐藏账号密码；反馈问题前仍请检查日志是否含不想公开的网络信息。
 
 ## 最简模式
 
@@ -46,7 +46,7 @@ GUI 构建需要 Windows x64、Python 3.12（含 tkinter）：
 py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements-build.txt
 # 从同版本发行包提取已验证的核心和 DLL；也可自行编译 core/。
-.venv\Scripts\python tools\prepare_runtime.py --archive 路径\JMU-night-network-windows-x64-v0.1.3.zip
+.venv\Scripts\python tools\prepare_runtime.py --archive 路径\JMU-night-network-windows-x64-v0.1.4.zip
 .venv\Scripts\python -m unittest discover -s tests -v
 .venv\Scripts\python tools\build.py
 ```

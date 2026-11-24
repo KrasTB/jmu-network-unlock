@@ -16,6 +16,7 @@ release/
 **/.auth-result-*.txt
 **/switch_status.json
 **/minimal_mode.json
+**/debug_logging.flag
 **/.pending-core/
 **/*.tmp
 **/*.bak

@@ -25,12 +25,15 @@ def _save(value):
 
 def record_switch(status, mode, reason='', **fields):
     value = read_switch_status()
+    incoming = dict(status=status, mode=mode, reason=reason, **fields)
+    changed = any(value.get(key) != item for key, item in incoming.items())
     value.update(status=status, mode=mode, reason=reason,
                  updated=datetime.datetime.now().isoformat(timespec='seconds'), **fields)
     if status == 'VERIFIED':
         value['problem_active'] = False
     _save(value)
-    event('switch', '自动切换状态', status=status, mode=mode, reason=reason, **fields)
+    event('switch', '自动切换状态', level='INFO' if changed else 'DEBUG',
+          status=status, mode=mode, reason=reason, **fields)
 
 
 def notify_night_failure(*, now=None, connected=False, reason='本次夜间认证尚未确认成功'):

@@ -34,7 +34,7 @@ def read_config(path):
     ipaddress.IPv4Network('0.0.0.0/' + mask)
     if service not in ('0', '1', '2', '3'):
         raise ValueError('运营商设置无效，请重新选择。')
-    event('config', '配置校验通过', office_ip=address, mask=mask, service=service)
+    event('config', '配置校验通过', level='DEBUG', office_ip=address, mask=mask, service=service)
     return dict(user=user, pwd=password, oip=address, omask=mask, svc=service)
 
 
@@ -55,7 +55,7 @@ def probe_network(src_ip=None, *, timeout=6, component='network'):
                                     timeout=per_probe + 0.2, creationflags=NO_WINDOW)
             code = result.stdout.decode('ascii', errors='replace').strip()
             ok = result.returncode == 0 and code == '204'
-            event(component, '联网检测', source=src_ip or '系统默认出口', url=url,
+            event(component, '联网检测', level='DEBUG', source=src_ip or '系统默认出口', url=url,
                   curl_exit=result.returncode, http_status=code, online=ok,
                   elapsed=round(time.monotonic() - started, 3))
             if ok:
