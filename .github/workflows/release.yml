@@ -107,7 +107,7 @@ jobs:
             }
             $lines | Set-Content dist/SHA256SUMS.txt -Encoding ascii
             $sha = git rev-parse HEAD
-            gh release create v0.1.0 dist/JMU-campus-auth-windows-x64-v0.1.0.zip dist/JMU-campus-auth-complete-source-v0.1.0.zip dist/SHA256SUMS.txt --target $sha --title '校园网助手 v0.1.0（初始版本）' --notes '保留最初公开版本供历史参考。日常使用请下载最新的整合版 v0.1.2。' --latest=false
+            gh release create v0.1.0 dist/JMU-campus-auth-windows-x64-v0.1.0.zip dist/JMU-campus-auth-complete-source-v0.1.0.zip dist/SHA256SUMS.txt --verify-tag --title '校园网助手 v0.1.0（初始版本）' --notes '保留最初公开版本供历史参考。日常使用请下载最新的整合版 v0.1.2。' --latest=false
             if ($LASTEXITCODE -ne 0) { throw 'Initial release restoration failed' }
           } finally { Pop-Location }
       - name: Keep only the initial and current versions
