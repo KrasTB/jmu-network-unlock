@@ -17,6 +17,7 @@
 ## 下载使用
 
 从 [Releases](https://github.com/KrasTB/jmu-network-unlock/releases/latest) 下载 Windows 压缩包，完整解压，双击 **JMU 夜间联网.exe**。首次填写自己的账号密码，无需安装 Python。
+
 **npcap安装时勾选☑ Install Npcap in WinPcap API-compatible Mode**
 
 - 未自动识别网卡时，在 **设置 → 认证网卡** 手动选择。
