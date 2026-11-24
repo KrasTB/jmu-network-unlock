@@ -21,6 +21,7 @@
 //
 
 #include "eap_frames_operations.h"
+#include "auth_status.h"
 
 uint8_t eapol_start[1000];  // eapol start frame
 uint8_t eap_response_identity[1000]; 
@@ -149,6 +150,7 @@ static void type_req_md5_chg_action(const uint8_t *frame)
 
 static void type_failure_action(const uint8_t *frame)
 {
+  report_auth_status("RETRYING");
   fprintf(stderr, "receive failure packet from server\n");
   current_state = EAP_FAILURE;
   print_server_info(frame);
@@ -160,6 +162,7 @@ static void type_failure_action(const uint8_t *frame)
 
   if(relogin_when_receive_failure_frame() != 0)
   {
+    report_auth_status("FAILURE");
     fprintf(stdout, "Attemp to relogin after program received failure frame failed.\n");
     exit(1);
   }
@@ -196,9 +199,13 @@ static void type_success_action(const uint8_t *frame)
   // midnight 模式, 重新登录保持长时间不断线
   if(midnight == 1)
   {
+    report_auth_status("STAGE1_OK");
     midnight_relogin();
   
-  }else pcap_breakloop(descr); // exit pcap capture process 
+  }else {
+    report_auth_status("SUCCESS");
+    pcap_breakloop(descr); // exit pcap capture process
+  }
 
   return;
 }

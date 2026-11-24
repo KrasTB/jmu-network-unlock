@@ -2,7 +2,7 @@ from runtime_log import event
 from runtime_support import read_config, probe_network, wait_check, auth_mode, process_info, stop_core, manual_auth
 from nic_manager import resolve_nic, NicError
 # -*- coding: utf-8 -*-
-"""校园网助手（重写版 2）
+"""JMU 夜间联网（重写版 2）
 
 一个窗口管三件事：连接 / 状态 / 断开。
 
@@ -182,7 +182,7 @@ class App:
         self.alive = True
         self.auth_lock = threading.Lock()
 
-        root.title("校园网助手")
+        root.title("JMU 夜间联网")
         root.configure(bg=BG)
         sw = root.winfo_screenwidth()
         sh_ = root.winfo_screenheight()
@@ -349,6 +349,12 @@ class App:
         if latency is not None or mbps is not None:
             speed_line = "响应 %s；下载 %s" % (("%.0f ms" % latency) if latency is not None else "未测得",
                 ("%.2f MB/s" % mbps) if mbps is not None else "未测得")
+        from switch_notifications import read_switch_status
+        switch = read_switch_status()
+        switch_text = {'FAILED': switch.get('reason') or '自动切换未确认成功，请查看运行日志',
+                       'PENDING': '正在认证，等待本次服务器回应与联网验证',
+                       'VERIFIED': '最近一次切换已验证',
+                       'CONNECTED': '有线联网已恢复，未重新认证'}.get(switch.get('status'), '暂无记录')
         rows = [("认证网卡", snap.get("NIC_NAME") or "尚未选定"),
                 ("网卡检查", snap.get("NIC_ERROR") or ("链路已连接" if up else "链路未就绪")),
                 ("有线地址", ip or "尚未取得"),
@@ -356,6 +362,7 @@ class App:
                 ("默认出口", snap.get("IFACE") or "未取得"),
                 ("有线联网", "正在重新验证" if phase else "最近检测通过" if self.net_wired else "尚未验证通过"),
                 ("当前操作", phase or "空闲"),
+                ("自动切换", switch_text),
                 ("开机验证记录", startup_line), ("测速结果", speed_line),
                 ("最近事件", snap.get("_last", "暂无事件")),
                 ("检查时间", snap.get("_time", "正在检查"))]

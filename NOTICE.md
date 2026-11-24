@@ -9,7 +9,7 @@
 ## 认证核心
 
 - 上游：[ShanQincheng/jmuSupplicant](https://github.com/ShanQincheng/jmuSupplicant)，作者 ShanQincheng（入山），上游采用 Apache License 2.0。
-- 本地 Windows 移植修改：Windows 网卡枚举与地址读取；POSIX 兼容层；相对锁文件和输出缓冲；第二阶段运营商通过 `JMU_MIDNIGHT_SERVICE` 配置。对应源码完整保存在 `core/src`、`core/compat`。
+- 本地 Windows 移植修改：Windows 网卡枚举与地址读取；POSIX 兼容层；相对锁文件和输出缓冲；第二阶段运营商通过 `JMU_MIDNIGHT_SERVICE` 配置。新增每次认证独立的状态文件，区分第一阶段与完整成功回应，兼容中文路径。对应源码完整保存在 `core/src`、`core/compat`。
 - `core/src/mentohust_encryption` 包含 MentoHUST 相关实现；`ampheck.h`、`rjripemd128.c/.h` 明确采用 GPL-3.0-or-later，Copyright (C) 2009 Gabriel A. Petursson。
 - Aleksey Kravchenko 的 RHash 代码、L. Peter Deutsch / Aladdin Enterprises 的 MD5 代码、RSA Data Security 的 MD5 代码保留各自原始头部声明，未统一改写为本项目许可。
 

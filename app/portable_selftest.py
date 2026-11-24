@@ -23,7 +23,7 @@ def run(report):
         assert Path(auto_switch.BASE) == base
         assert Path(startup_guard.BASE) == base
         assert Path(schedule.HOLIDAY_FILE).parent == base
-        for name in ['jmusupplicant.exe', 'libiconv-2.dll', 'getnic.ps1', 'install_npcap.ps1', 'holidays.txt']:
+        for name in ['jmusupplicant.exe', 'libiconv-2.dll', 'getnic.ps1', 'install_npcap.ps1', 'holidays.txt', 'notify.ps1']:
             assert (base / name).is_file(), name
         results.append('standalone_imports_and_stable_paths')
         for mode in ['auto-switch', 'startup-guard']:
@@ -144,7 +144,7 @@ def run(report):
             def inspect_window(window, *args, **kwargs):
                 menu = window.nametowidget(window.cget('menu'))
                 assert menu.entrycget(1, 'label') == '设置'
-                assert window.title() == '校园网助手'
+                assert window.title() == 'JMU 夜间联网'
                 def all_widgets(parent):
                     result = []
                     for child in parent.winfo_children():

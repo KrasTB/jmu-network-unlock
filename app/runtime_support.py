@@ -8,6 +8,8 @@ from pathlib import Path
 import subprocess
 import threading
 import time
+import uuid
+import re
 from office_ip_policy import check_office_ip
 from package_runtime import data_dir
 from runtime_log import event
@@ -116,7 +118,7 @@ def auth_mode():
     if records:
         return records[0]['mode']
     state = read_auth_state()
-    if state.get('verified') and abs(state.get('boot', 0) - boot_epoch()) < 5:
+    if state.get('verified') and server_confirmed(state.get('mode'), state.get('device')):
         try:
             device = (data_dir() / 'nic.txt').read_text(encoding='utf-8-sig').strip()
             if device.casefold() == state.get('device', '').casefold():
@@ -142,14 +144,107 @@ def read_auth_state():
 
 def auth_state(mode, device=None, *, verified=False):
     previous = read_auth_state()
-    state = dict(mode=mode, device=device or previous.get('device', ''), verified=verified,
+    device = device or previous.get('device', '')
+    accepted = server_confirmed(mode, device)
+    state = dict(previous) if previous.get('mode') == mode and previous.get('device') == device else {}
+    state.update(mode=mode, device=device, verified=bool(verified and accepted),
                  boot=boot_epoch(), time=time.time())
+    if verified and not accepted:
+        event('authentication', '未将旧连接误认为本次认证成功', mode=mode, server_confirmed=False)
+    _save_auth_state(state)
+    return bool(state['verified'])
+
+
+def _save_auth_state(state):
     try:
         temp = data_dir() / 'auth_state.tmp'
         temp.write_text(json.dumps(state), encoding='utf-8')
         os.replace(temp, data_dir() / 'auth_state.json')
     except OSError as exc:
         event('authentication', '保存认证状态失败', level='WARNING', reason=type(exc).__name__)
+
+
+def begin_auth_attempt(mode, device):
+    identifier = uuid.uuid4().hex
+    state = dict(mode=mode, device=device, verified=False, boot=boot_epoch(), time=time.time(),
+                 started=time.time(), attempt=identifier, result_file='.auth-result-' + identifier + '.txt')
+    _save_auth_state(state)
+    return state
+
+
+def server_status(state=None):
+    state = state if state is not None else read_auth_state()
+    identifier = state.get('attempt', '')
+    if not re.fullmatch('[0-9a-f]{32}', identifier):
+        return 'UNKNOWN'
+    name = '.auth-result-' + identifier + '.txt'
+    if state.get('result_file') != name or abs(state.get('boot', 0) - boot_epoch()) >= 5:
+        return 'UNKNOWN'
+    try:
+        value = (data_dir() / name).read_text(encoding='ascii').strip()
+        return value if value in {'SUCCESS', 'STAGE1_OK', 'RETRYING', 'FAILURE'} else 'PENDING'
+    except (OSError, UnicodeError):
+        return 'PENDING'
+
+
+def server_confirmed(mode, device=None):
+    state = read_auth_state()
+    return bool(mode and state.get('mode') == mode and
+                (device is None or str(state.get('device', '')).casefold() == str(device).casefold()) and
+                server_status(state) == 'SUCCESS')
+
+
+def probe_device(device, *, timeout=4, component='authentication'):
+    from nic_manager import resolve_nic, NicError
+    try:
+        adapter = resolve_nic()
+    except (NicError, OSError):
+        return False
+    if adapter['device'].casefold() != device.casefold() or not adapter.get('ip'):
+        event(component, '所选网卡已改变或没有地址', level='WARNING', expected_device=device)
+        return False
+    return probe_network(adapter['ip'], timeout=timeout, component=component)
+
+
+def wait_authentication(mode, device=None, timeout=35, interval=1, *, component='authentication'):
+    state = read_auth_state()
+    device = device or state.get('device', '')
+    attempt = state.get('attempt')
+    started = time.monotonic()
+    deadline = started + timeout
+    while time.monotonic() < deadline:
+        current = read_auth_state()
+        if not attempt or current.get('attempt') != attempt:
+            event(component, '认证任务已更换，停止验证旧任务', level='WARNING')
+            return False, math.ceil(time.monotonic() - started)
+        status = server_status(current)
+        if status == 'FAILURE':
+            break
+        if server_confirmed(mode, device) and probe_device(device, timeout=min(4, max(0.1, deadline-time.monotonic())), component=component):
+            auth_state(mode, device, verified=True)
+            elapsed = math.ceil(time.monotonic() - started)
+            event(component, '本次认证与有线联网均已确认', mode=mode, elapsed=elapsed)
+            return True, elapsed
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(interval, remaining))
+    elapsed = math.ceil(time.monotonic() - started)
+    event(component, '本次认证未确认成功', level='WARNING', mode=mode, server_status=server_status(), elapsed=elapsed)
+    auth_state(mode, device, verified=False)
+    return False, elapsed
+
+
+def monitor_stability(mode, device, seconds=60, interval=2):
+    started = time.monotonic()
+    while True:
+        if not server_confirmed(mode, device) or not probe_device(device, component='stability'):
+            auth_state(mode, device, verified=False)
+            event('stability', '连接在稳定性检查中失效，立即回退', elapsed=round(time.monotonic()-started, 2))
+            return False
+        remaining = seconds - (time.monotonic() - started)
+        if remaining <= 0:
+            return True
+        time.sleep(min(interval, remaining))
 
 
 def stop_core(wait=7):
@@ -160,11 +255,16 @@ def stop_core(wait=7):
         event('authentication', '停止本目录认证进程', pid_target=record['pid'], exit_code=result.returncode)
         if result.returncode:
             raise RuntimeError('无法停止原认证进程，请关闭后重试。')
-    time.sleep(wait)
+    if records:
+        time.sleep(wait)
 
 
 def start_core(mode, conf, nic):
     exe = str(data_dir() / 'jmusupplicant.exe')
+    pending = data_dir() / '.pending-core' / 'jmusupplicant.exe'
+    if pending.exists():
+        os.replace(pending, exe)
+        event('authentication', '已应用待更新的认证核心')
     args = [exe, '-u', conf['user'], '-p', conf['pwd'], '-s', '0' if mode == 'bypass' else conf['svc'],
             '--interface_card', nic]
     if mode == 'bypass':
@@ -172,7 +272,8 @@ def start_core(mode, conf, nic):
     environment = os.environ.copy()
     environment['JMU_MIDNIGHT_SERVICE'] = conf['svc']
     started = time.monotonic()
-    auth_state(mode, nic, verified=False)
+    attempt = begin_auth_attempt(mode, nic)
+    environment['JMU_AUTH_RESULT_FILE'] = str(data_dir() / attempt['result_file'])
     event('authentication', '启动认证', mode=mode, service=conf['svc'], device=nic,
           office_ip=conf['oip'] if mode == 'bypass' else None)
     try:
@@ -211,13 +312,10 @@ def manual_auth(app, mode, service=None):
         stop_core()
         app._auth_phase = '启动认证并验证联网'
         start_core(mode, conf, adapter['device'])
-        def bound_probe():
-            ip = wired_ip()
-            return bool(ip) and probe_network(ip, component='manual')
-        ok, elapsed = wait_check(bound_probe, component='manual')
+        ok, elapsed = wait_authentication(mode, adapter['device'], timeout=40, component='manual')
         auth_state(mode, adapter['device'], verified=ok)
         text = ('认证成功，有线网络已验证可用（%d 秒）' if ok else
-                '未确认认证成功：有线联网验证失败（实际检测 %d 秒），请查看日志') % elapsed
+                '未确认认证成功：服务器回应或有线联网验证未通过（%d 秒），请查看日志') % elapsed
         app.root.after(0, lambda text=text: app.tip.config(text=text))
         event('manual', '手动认证结束', verified=ok, mode=mode,
               total_elapsed=round(time.monotonic() - started, 3))

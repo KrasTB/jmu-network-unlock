@@ -134,6 +134,8 @@ class ModuleReviewTests(unittest.TestCase):
             (folder / 'nic.txt').write_text(r'\Device\NPF_{TEST}', encoding='ascii')
             with patch.object(support, 'data_dir', return_value=folder), patch.object(support, 'process_info', return_value=[]):
                 with patch.object(support, 'boot_epoch', return_value=1000):
+                    attempt = support.begin_auth_attempt('bypass', r'\Device\NPF_{TEST}')
+                    (folder / attempt['result_file']).write_text('SUCCESS', encoding='ascii')
                     support.auth_state('bypass', r'\Device\NPF_{TEST}', verified=True)
                     self.assertEqual(support.auth_mode(), 'bypass')
                 with patch.object(support, 'boot_epoch', return_value=2000):
@@ -177,7 +179,9 @@ class ModuleReviewTests(unittest.TestCase):
              patch.object(auto, 'read_conf', return_value=conf), patch.object(auto, 'read_nic', return_value='test-nic'), \
              patch.object(auto, 'current_mode', return_value='bypass'), patch.object(auto, 'is_blackout', return_value=True), \
              patch.object(auto, 'should_prepare_bypass', return_value=False), patch.object(auto, 'online', return_value=False), \
-             patch.object(auto, 'wait_online', side_effect=[(False, 20), (True, 2)]), \
+             patch.object(auto, 'wait_online', return_value=(True, 2)), \
+             patch.object(auto, 'read_auth_state', return_value={}), patch.object(auto, 'read_switch_status', return_value={}), \
+             patch.object(auto, 'record_switch'), patch.object(auto, 'notify_night_failure'), \
              patch.object(auto, 'kill_proc'), patch.object(auto, 'start_proc') as start, patch.object(auto, 'auth_state'):
             self.assertEqual(auto.main(), 0)
             self.assertEqual(start.call_args.args, ('bypass', conf, 'test-nic'))

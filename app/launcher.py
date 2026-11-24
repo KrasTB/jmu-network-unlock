@@ -259,7 +259,7 @@ def dispatch():
             raise SystemExit(auto_switch.main())
     with instance_lock('ui') as acquired:
         if not acquired:
-            messagebox.showinfo('校园网助手', '助手已经打开，请查看已有窗口。')
+            messagebox.showinfo('JMU 夜间联网', '助手已经打开，请查看已有窗口。')
             return
         main()
 
@@ -275,5 +275,5 @@ if __name__ == '__main__':
         import traceback
         error = traceback.format_exc()
         event('launcher', '启动异常', level='ERROR', reason=error)
-        messagebox.showerror('校园网助手启动失败', '程序未能完成启动，请查看“程序/runtime.log”。')
+        messagebox.showerror('JMU 夜间联网启动失败', '程序未能完成启动，请查看“程序/runtime.log”。')
         raise SystemExit(1)

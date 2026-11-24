@@ -13,6 +13,9 @@ release/
 **/startup_status.txt
 **/auth_state.json
 **/auth_state.tmp
+**/.auth-result-*.txt
+**/switch_status.json
+**/.pending-core/
 **/*.tmp
 **/*.bak
 **/修复备份/

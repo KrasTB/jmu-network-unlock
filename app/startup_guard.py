@@ -1,5 +1,5 @@
 from runtime_log import event
-from runtime_support import read_config, probe_network, wait_check, process_info, stop_core, auth_state
+from runtime_support import read_config, probe_network, wait_check, process_info, stop_core, auth_state, wait_authentication, read_auth_state
 from nic_manager import resolve_nic, NicError
 # -*- coding: utf-8 -*-
 """Logon-time authentication and wired-connectivity guard."""
@@ -83,7 +83,8 @@ def stop_auth():
 
 
 def wait_online(timeout=40, interval=4):
-    return wait_check(online, timeout, interval, component="startup")[0]
+    state = read_auth_state()
+    return wait_authentication(state.get('mode'), state.get('device'), timeout, 1, component='startup')[0]
 
 
 def ensure_connected():

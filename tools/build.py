@@ -9,8 +9,8 @@ import sys
 import tempfile
 import zipfile
 
-VERSION = '0.1.0'
-ASSETS = ('jmusupplicant.exe', 'libiconv-2.dll', 'getnic.ps1', 'install_npcap.ps1', 'holidays.txt')
+VERSION = '0.1.1'
+ASSETS = ('jmusupplicant.exe', 'libiconv-2.dll', 'getnic.ps1', 'install_npcap.ps1', 'holidays.txt', 'notify.ps1')
 
 
 def main():
@@ -22,15 +22,15 @@ def main():
     output = root / 'dist'
     output.mkdir(exist_ok=True)
     subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onefile', '--windowed',
-                    '--name', '校园网助手', '--paths', str(app), '--distpath', str(output / 'bin'),
+                    '--name', 'JMU 夜间联网', '--paths', str(app), '--distpath', str(output / 'bin'),
                     '--workpath', str(root / 'build' / 'pyinstaller'), '--specpath', str(root / 'build'),
                     str(app / 'launcher.py')], check=True)
     with tempfile.TemporaryDirectory(prefix='发布验收 中文路径-', dir=output) as temporary:
-        release = Path(temporary) / '校园网助手'
+        release = Path(temporary) / 'JMU 夜间联网'
         data = release / '程序'
         legal = data / '许可'
         legal.mkdir(parents=True)
-        shutil.copy2(output / 'bin' / '校园网助手.exe', release / '校园网助手.exe')
+        shutil.copy2(output / 'bin' / 'JMU 夜间联网.exe', release / 'JMU 夜间联网.exe')
         for name in ASSETS:
             shutil.copy2(app / name, data / name)
         shutil.copy2(root / '使用说明.txt', release / '使用说明.txt')
@@ -47,7 +47,7 @@ def main():
                        if not key.upper().startswith(('PYTHON', 'TCL', 'TK_'))}
         environment['PATH'] = str(Path(os.environ['SystemRoot']) / 'System32')
         report = output / 'selftest.json'
-        result = subprocess.run([str(release / '校园网助手.exe'), '--self-test', str(report)],
+        result = subprocess.run([str(release / 'JMU 夜间联网.exe'), '--self-test', str(report)],
                                 env=environment, check=False, timeout=60)
         if report.exists():
             print(report.read_text(encoding='utf-8'), flush=True)
@@ -56,13 +56,13 @@ def main():
         result.check_returncode()
         assert json.loads(report.read_text(encoding='utf-8'))['ok']
         # Self-test output is never included in the distributed directory.
-        archive = output / ('JMU-campus-auth-windows-x64-v' + VERSION + '.zip')
-        allowed = [release / '校园网助手.exe', release / '使用说明.txt']
+        archive = output / ('JMU-night-network-windows-x64-v' + VERSION + '.zip')
+        allowed = [release / 'JMU 夜间联网.exe', release / '使用说明.txt']
         allowed += [data / name for name in ASSETS]
         allowed += [path for path in legal.iterdir() if path.is_file()]
         with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zipped:
             for path in allowed:
-                zipped.write(path, '校园网助手/' + path.relative_to(release).as_posix())
+                zipped.write(path, 'JMU 夜间联网/' + path.relative_to(release).as_posix())
         with zipfile.ZipFile(archive) as zipped:
             assert zipped.testzip() is None
             assert not any(Path(name).name in {'config.txt', 'nic.txt', 'runtime.log', 'runtime-log.lock'}

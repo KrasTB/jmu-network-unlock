@@ -29,6 +29,6 @@ try {
         }
     }
 } catch {
-    [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '校园网助手', 'OK', 'Error') | Out-Null
+    [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'JMU 夜间联网', 'OK', 'Error') | Out-Null
     exit 1
 }

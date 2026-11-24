@@ -1,6 +1,7 @@
 from runtime_log import event
-from runtime_support import read_config, probe_network, wait_check, auth_mode, stop_core, start_core, auth_state
+from runtime_support import read_config, probe_network, wait_check, auth_mode, stop_core, start_core, auth_state, wait_authentication, server_confirmed, server_status, read_auth_state, monitor_stability
 from nic_manager import resolve_nic, NicError
+from switch_notifications import record_switch, notify_night_failure, read_switch_status
 # -*- coding: utf-8 -*-
 """每小时尝试把「教育网破解模式」切成「运营商普通模式」。
 
@@ -97,7 +98,8 @@ def online(timeout=4, attempts=1):
 
 
 def wait_online(max_sec=PORT_WAIT, step=4):
-    return wait_check(online, max_sec, step, component="scheduler")
+    state = read_auth_state()
+    return wait_authentication(state.get("mode"), state.get("device"), max_sec, 1, component="scheduler")
 
 
 def rollback_edu(conf, nic):
@@ -113,60 +115,90 @@ def rollback_edu(conf, nic):
     return ok
 
 
+def switch_to(mode, conf, nic, *, stability=False):
+    record_switch("PENDING", mode, "等待本次服务器回应与有线联网验证")
+    kill_proc()
+    start_proc(mode, conf, nic)
+    ok, elapsed = wait_online(35)
+    if ok and stability:
+        ok = monitor_stability(mode, nic, HOLD_SEC, 2)
+    auth_state(mode, nic, verified=ok)
+    event("scheduler", "切换验证结果", mode=mode, verified=ok, elapsed=elapsed, server_status=server_status())
+    if ok:
+        record_switch("VERIFIED", mode, "本次认证的完整成功回应与有线联网均已确认", connected=True)
+    else:
+        record_switch("FAILED", mode, "未收到本次完整认证成功回应，或有线联网验证未通过", connected=online())
+    return ok
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--no-hold", action="store_true")
     args = ap.parse_args()
     now = datetime.datetime.now()
-    if not args.force and not should_run(now):
+    previous_switch = read_switch_status()
+    recovery_due = previous_switch.get("status") == "FAILED" and previous_switch.get("connected") is False
+    if not args.force and not should_run(now) and not recovery_due:
         event("scheduler", "本轮无需切换", reason="不在检查窗口")
         return 0
+    night = is_blackout(now)
+    prepare = should_prepare_bypass(now)
     try:
         conf = read_conf()
         nic = read_nic()
         mode = current_mode()
-        night = is_blackout(now)
-        prepare = should_prepare_bypass(now)
         healthy = online()
+        accepted_bypass = server_confirmed("bypass", nic)
         event("scheduler", "切换决策", current_mode=mode, night=night, prepare=prepare,
-              online=healthy, service=conf["svc"], forced=args.force)
-        if night and healthy and not args.force:
-            log("夜间有线网络可用，保持现状")
+              online=healthy, bypass_server_confirmed=accepted_bypass, service=conf["svc"])
+        if night and healthy and accepted_bypass and not args.force:
+            record_switch("VERIFIED", "bypass", "夜间认证已确认，有线当前可上网", connected=True)
             return 0
+        if night and not accepted_bypass:
+            notify_night_failure(now=now, connected=healthy, reason="已到限制时段，提前夜间认证仍未确认")
         if not night and not prepare and healthy and not args.force:
             if mode != "bypass" or now.hour >= 22:
-                log("当前网络可用，保持现状")
+                if recovery_due:
+                    record_switch("CONNECTED", mode, "有线联网已恢复，未重新认证", connected=True)
                 return 0
-        if prepare and healthy and mode == "bypass" and not args.force:
-            log("已提前进入绕过模式，保持现状")
+        if prepare and healthy and accepted_bypass and not args.force:
             return 0
-        if not healthy and mode is not None:
-            log("有认证状态但网络未通，进行有上限的等待")
-            if wait_online(20)[0]:
-                log("等待后已恢复，本轮保持现状")
-                return 0
-            log("等待结束仍不通，重新认证")
         desired = "bypass" if night or prepare else "normal"
-        kill_proc()
-        start_proc(desired, conf, nic)
-        ok, elapsed = wait_online(35)
-        auth_state(desired, nic, verified=ok)
-        event("scheduler", "切换验证结果", mode=desired, verified=ok, elapsed=elapsed)
-        if ok and desired == "normal" and not args.no_hold:
-            log("首次联网通过，静置后确认稳定性")
-            time.sleep(HOLD_SEC)
-            ok = online()
-            auth_state(desired, nic, verified=ok)
-            event("scheduler", "稳定性复核", verified=ok, hold_seconds=HOLD_SEC)
-        if not ok and desired == "normal":
-            log("运营商验证失败，回退绕过模式")
-            restored = rollback_edu(conf, nic)
-            auth_state("bypass", nic, verified=restored)
-            event("scheduler", "回退结果", restored=restored)
+        state = read_auth_state()
+        age = max(0, time.time() - state.get("started", 0))
+        same_attempt = state.get("mode") == desired and state.get("device") == nic
+        # Give only a recent, real attempt a short chance to finish; stale processes
+        # no longer impose an unconditional twenty-second wait on recovery.
+        if same_attempt and age < 20 and server_status(state) in ("PENDING", "STAGE1_OK", "RETRYING"):
+            if wait_online(15)[0]:
+                record_switch("VERIFIED", desired, "正在进行的认证已完成验证", connected=True)
+                return 0
+        if same_attempt and age < 90 and not args.force and not state.get("verified"):
+            event("scheduler", "暂缓重复认证", reason="距离上次尝试不足90秒", age=round(age, 1))
+            return 1
+        ok = switch_to(desired, conf, nic, stability=desired == "normal" and not args.no_hold)
+        if not ok:
+            if desired == "normal":
+                log("运营商验证失败，立即回退夜间方案")
+                restored = switch_to("bypass", conf, nic)
+                record_switch("FAILED", desired,
+                              "运营商切换失败；已回退并验证联网" if restored else "运营商切换及回退均未通过验证",
+                              connected=restored, restored_mode="bypass" if restored else None)
+            elif prepare and mode == "normal" and not online():
+                log("提前夜间认证失败且网络不可用，先恢复正常时段运营商连接")
+                restored = switch_to("normal", conf, nic)
+                record_switch("FAILED", "bypass",
+                              "提前夜间认证未确认；已恢复运营商连接" if restored else "提前认证失败，恢复运营商也未通过验证",
+                              connected=restored)
+            if night:
+                notify_night_failure(now=now, connected=online())
         return 0 if ok else 1
     except Exception as exc:
         event("scheduler", "自动切换失败", level="ERROR", reason=str(exc), error_type=type(exc).__name__)
+        record_switch("FAILED", "bypass" if night or prepare else "normal", str(exc), connected=False)
+        if night:
+            notify_night_failure(now=now, connected=False, reason=str(exc))
         return 2
 
 

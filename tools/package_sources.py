@@ -5,7 +5,7 @@ import subprocess
 import urllib.request
 import zipfile
 
-VERSION = '0.1.0'
+VERSION = '0.1.1'
 ICONV_SHA256 = '88dd96a8c0464eca144fc791ae60cd31cd8ee78321e67397e25fc095c4a19aa6'
 
 
@@ -22,7 +22,7 @@ def main():
     paths.append(iconv)
     output = root / 'dist'
     output.mkdir(exist_ok=True)
-    archive = output / ('JMU-campus-auth-complete-source-v' + VERSION + '.zip')
+    archive = output / ('JMU-night-network-complete-source-v' + VERSION + '.zip')
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zipped:
         for path in paths:
             zipped.write(path, 'jmu-network-unlock-' + VERSION + '/' + path.relative_to(root).as_posix())
