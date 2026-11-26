@@ -12,13 +12,6 @@
 
 本项目的 `jmusupplicant.exe` 是 [jmuSupplicant](https://github.com/ShanQincheng/jmuSupplicant) 的 Windows 修改版本，上游作者为 ShanQincheng（入山），项目采用 Apache-2.0 许可。**认证主流程、午夜重认证机制、EAP 报文构造与收发，以及锐捷 V4 校验和相关加密算法均来自上游及其引用的第三方实现**。本项目未重新逆向协议，主要工作是 Windows 适配，以及图形界面、诊断、自动切换、部署脚本和文档。
 
-Windows 版本包含三项关键适配：
-
-1. **POSIX/BSD 兼容层**：新增 `core/compat/`，通过 `-include compat/winposix.h` 注入兼容定义及桩函数，处理文件锁、信号、定时器等接口差异。部分接口为空实现，相应的互斥、进程管理与联网超时由 Python 外层负责。
-2. **网卡设备名容量**：将 `core/src/init.h` 中的 `NIC_SIZE` 从 16 扩至 128，容纳 Windows Npcap 的 `\Device\NPF_{GUID}` 长设备名，避免名称截断或越界导致无法打开网卡，并配套适配 Windows 网卡枚举及地址读取。
-3. **第二阶段运营商配置**：修改 `functions.c` 的 `midnight_relogin()`，将原先写死的联通服务值 `"1"` 改为读取 `JMU_MIDNIGHT_SERVICE`（0 教育网、1 联通、2 移动、3 电信），未设置时缺省为电信。当前图形程序按用户选择传入该变量，避免第二阶段固定使用联通服务；这不代表服务器一定开放相应运营商出口。
-
-当前版本还补充了认证状态回传、中文路径兼容及锁文件路径、输出缓冲等调整。完整修改源码位于 `core/`；协议与算法的贡献归上游及相应第三方作者。包含第三方代码的组合认证核心按 GPL-3.0-or-later 分发，详细来源与许可见 [NOTICE.md](NOTICE.md)。
 
 ## 使用条件
 
